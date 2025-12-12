@@ -7,7 +7,7 @@
 使用以下命令安装：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MorvenCat/proxyctl/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/MorvenCat/Proxyctl/main/install.sh | bash
 ```
 
 ## 使用
