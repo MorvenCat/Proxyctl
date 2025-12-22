@@ -4,7 +4,7 @@
 # 使用方法: source proxy.sh 或将其添加到 ~/.zshrc 或 ~/.bashrc
 
 # 版本号
-PROXY_VERSION="1.1.0"
+PROXY_VERSION="1.2.0"
 PROXY_REPO="MorvenCat/Proxyctl"
 PROXY_SCRIPT_URL="https://raw.githubusercontent.com/${PROXY_REPO}/main/proxy.sh"
 
