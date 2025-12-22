@@ -3,6 +3,11 @@
 # Linux/macOS 终端代理管理脚本
 # 使用方法: source proxy.sh 或将其添加到 ~/.zshrc 或 ~/.bashrc
 
+# 版本号
+PROXY_VERSION="1.0.0"
+PROXY_REPO="MorvenCat/Proxyctl"
+PROXY_SCRIPT_URL="https://raw.githubusercontent.com/${PROXY_REPO}/main/proxy.sh"
+
 proxy() {
     local command="$1"
     local proxy_type="$2"
@@ -14,8 +19,9 @@ proxy() {
             # 从保存的配置中恢复代理设置
             if [ -f ~/.proxy_config ]; then
                 source ~/.proxy_config
+                # 保存代理开启状态，以便下次打开终端时自动开启
+                echo "on" > ~/.proxy_state
                 echo "代理已开启"
-                proxy status
             else
                 echo "错误: 未找到保存的代理配置"
                 echo ""
@@ -38,6 +44,8 @@ proxy() {
             unset ALL_PROXY
             unset socks_proxy
             unset SOCKS_PROXY
+            # 保存代理关闭状态，下次打开终端时不自动开启
+            echo "off" > ~/.proxy_state
             echo "代理已关闭"
             ;;
 
@@ -103,22 +111,45 @@ proxy() {
             echo "当前代理状态:"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             
-            if [ -n "$http_proxy" ] || [ -n "$HTTP_PROXY" ]; then
-                echo "✓ HTTP 代理: ${http_proxy:-$HTTP_PROXY}"
+            # 从配置文件中读取代理地址（如果环境变量未设置）
+            local config_http_proxy=""
+            local config_https_proxy=""
+            local config_socks_proxy=""
+            
+            if [ -f ~/.proxy_config ]; then
+                # 在子 shell 中 source 配置文件并提取变量值
+                config_http_proxy=$(bash -c "source ~/.proxy_config 2>/dev/null; echo \"\${http_proxy:-}\"")
+                config_https_proxy=$(bash -c "source ~/.proxy_config 2>/dev/null; echo \"\${https_proxy:-}\"")
+                config_socks_proxy=$(bash -c "source ~/.proxy_config 2>/dev/null; echo \"\${socks_proxy:-}\"")
+            fi
+            
+            # 显示代理配置状态
+            echo "代理配置:"
+            if [ -n "$config_http_proxy" ]; then
+                echo "  ✓ HTTP 代理: $config_http_proxy"
             else
-                echo "✗ HTTP 代理: 未设置"
+                echo "  ✗ HTTP 代理: 未设置"
             fi
 
-            if [ -n "$https_proxy" ] || [ -n "$HTTPS_PROXY" ]; then
-                echo "✓ HTTPS 代理: ${https_proxy:-$HTTPS_PROXY}"
+            if [ -n "$config_https_proxy" ]; then
+                echo "  ✓ HTTPS 代理: $config_https_proxy"
             else
-                echo "✗ HTTPS 代理: 未设置"
+                echo "  ✗ HTTPS 代理: 未设置"
             fi
 
-            if [ -n "$socks_proxy" ] || [ -n "$SOCKS_PROXY" ]; then
-                echo "✓ SOCKS5 代理: ${socks_proxy:-$SOCKS_PROXY}"
+            if [ -n "$config_socks_proxy" ]; then
+                echo "  ✓ SOCKS5 代理: $config_socks_proxy"
             else
-                echo "✗ SOCKS5 代理: 未设置"
+                echo "  ✗ SOCKS5 代理: 未设置"
+            fi
+
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            # 显示代理开启状态
+            if [ -n "$http_proxy" ] || [ -n "$HTTP_PROXY" ] || [ -n "$https_proxy" ] || [ -n "$HTTPS_PROXY" ] || [ -n "$socks_proxy" ] || [ -n "$SOCKS_PROXY" ]; then
+                echo "✓ 代理状态: 已开启"
+            else
+                echo "✗ 代理状态: 未开启"
             fi
 
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -145,6 +176,111 @@ proxy() {
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             ;;
 
+        update)
+            echo "正在检查更新..."
+            
+            # 获取脚本安装路径
+            local script_path=""
+            # 优先检查标准安装路径
+            if [ -f "$HOME/.local/bin/proxy.sh" ]; then
+                script_path="$HOME/.local/bin/proxy.sh"
+            else
+                # 尝试从当前脚本位置获取
+                local current_script="${BASH_SOURCE[0]}"
+                if [ -L "$current_script" ]; then
+                    # 如果是符号链接，尝试解析
+                    if command -v readlink >/dev/null 2>&1; then
+                        if [[ "$OSTYPE" == "darwin"* ]]; then
+                            # macOS 使用 readlink 不带 -f
+                            current_script="$(readlink "$current_script")"
+                        else
+                            # Linux 使用 readlink -f
+                            current_script="$(readlink -f "$current_script")"
+                        fi
+                    fi
+                fi
+                script_path="$(cd "$(dirname "$current_script")" && pwd)/proxy.sh"
+                if [ ! -f "$script_path" ]; then
+                    echo "错误: 无法找到脚本安装路径"
+                    echo "请手动指定脚本路径或重新安装"
+                    return 1
+                fi
+            fi
+            
+            # 创建临时文件
+            local temp_file=$(mktemp)
+            local download_success=0
+            
+            # 下载最新版本
+            if command -v curl >/dev/null 2>&1; then
+                if curl -fsSL "$PROXY_SCRIPT_URL" -o "$temp_file" 2>/dev/null; then
+                    download_success=1
+                fi
+            elif command -v wget >/dev/null 2>&1; then
+                if wget -q "$PROXY_SCRIPT_URL" -O "$temp_file" 2>/dev/null; then
+                    download_success=1
+                fi
+            else
+                echo "错误: 未找到 curl 或 wget，无法下载更新"
+                rm -f "$temp_file"
+                return 1
+            fi
+            
+            if [ $download_success -eq 0 ] || [ ! -f "$temp_file" ]; then
+                echo "错误: 下载失败，请检查网络连接"
+                rm -f "$temp_file"
+                return 1
+            fi
+            
+            # 验证下载的文件是否为有效脚本
+            if ! head -n 1 "$temp_file" | grep -q "^#!/bin/bash" 2>/dev/null; then
+                echo "错误: 下载的文件不是有效的脚本文件"
+                rm -f "$temp_file"
+                return 1
+            fi
+            
+            # 获取最新版本号（从脚本中提取）
+            local latest_version=$(grep -E '^PROXY_VERSION=' "$temp_file" 2>/dev/null | head -n1 | sed -E 's/^PROXY_VERSION="([^"]*)".*/\1/')
+            
+            if [ -z "$latest_version" ]; then
+                latest_version="未知"
+            fi
+            
+            # 比较版本
+            if [ "$latest_version" != "未知" ] && [ "$PROXY_VERSION" = "$latest_version" ]; then
+                echo "✓ 已是最新版本 (v${PROXY_VERSION})"
+                rm -f "$temp_file"
+                return 0
+            fi
+            
+            # 备份当前脚本
+            local backup_file="${script_path}.backup.$(date +%Y%m%d_%H%M%S)"
+            cp "$script_path" "$backup_file" 2>/dev/null
+            
+            # 更新脚本
+            if cp "$temp_file" "$script_path" 2>/dev/null && chmod +x "$script_path" 2>/dev/null; then
+                echo "✓ 更新成功！"
+                if [ "$latest_version" != "未知" ]; then
+                    echo "  当前版本: v${PROXY_VERSION} -> v${latest_version}"
+                fi
+                echo "  备份文件: $backup_file"
+                echo ""
+                echo "请运行以下命令使更新生效："
+                echo "  source $script_path"
+                echo "  或重新打开终端"
+                rm -f "$temp_file"
+            else
+                echo "错误: 更新失败，请检查文件权限"
+                # 尝试恢复备份
+                if [ -f "$backup_file" ]; then
+                    cp "$backup_file" "$script_path" 2>/dev/null
+                    echo "已恢复备份文件"
+                fi
+                rm -f "$temp_file"
+                return 1
+            fi
+            ;;
+
         *)
             echo "代理管理工具"
             echo ""
@@ -156,6 +292,7 @@ proxy() {
             echo "  proxy set socks5 <host> <port> - 设置 SOCKS5 代理"
             echo "  proxy set all <host> <port>     - 设置所有代理"
             echo "  proxy status                - 查看当前代理状态"
+            echo "  proxy update                - 更新到最新版本"
             echo ""
             echo "示例:"
             echo "  proxy set all 127.0.0.1 7890"
@@ -165,3 +302,12 @@ proxy() {
             ;;
     esac
 }
+
+# 自动恢复代理状态（如果上次是开启状态）
+# 只在非交互模式下静默加载，避免每次打开终端都显示输出
+if [ -f ~/.proxy_state ] && [ "$(cat ~/.proxy_state 2>/dev/null)" = "on" ]; then
+    if [ -f ~/.proxy_config ]; then
+        # 静默加载代理配置（不显示输出）
+        source ~/.proxy_config >/dev/null 2>&1
+    fi
+fi

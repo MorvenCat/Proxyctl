@@ -119,7 +119,27 @@ else
     echo -e "${YELLOW}⚠ 配置文件不存在: $HOME/.proxy_config${NC}"
 fi
 
-# 4. 清除当前 shell 中的环境变量（提示用户）
+# 4. 删除状态文件
+if [ -f "$HOME/.proxy_state" ]; then
+    rm -f "$HOME/.proxy_state"
+    echo -e "${GREEN}✓ 已删除 $HOME/.proxy_state${NC}"
+else
+    echo -e "${YELLOW}⚠ 状态文件不存在: $HOME/.proxy_state${NC}"
+fi
+
+# 5. 删除备份文件（如果有）
+backup_count=0
+for backup_file in "$INSTALL_DIR"/proxy.sh.backup.*; do
+    if [ -f "$backup_file" ]; then
+        rm -f "$backup_file"
+        backup_count=$((backup_count + 1))
+    fi
+done
+if [ $backup_count -gt 0 ]; then
+    echo -e "${GREEN}✓ 已删除 $backup_count 个备份文件${NC}"
+fi
+
+# 6. 清除当前 shell 中的环境变量（提示用户）
 echo ""
 echo -e "${GREEN}卸载完成！${NC}"
 echo ""

@@ -176,6 +176,14 @@ main() {
     chmod +x "$INSTALL_DIR/proxy.sh"
     echo -e "${GREEN}✓ 已添加执行权限${NC}"
     
+    # 检查已安装的版本（如果存在）
+    if [ -f "$INSTALL_DIR/proxy.sh" ] && grep -q "^PROXY_VERSION=" "$INSTALL_DIR/proxy.sh" 2>/dev/null; then
+        local installed_version=$(grep -E '^PROXY_VERSION=' "$INSTALL_DIR/proxy.sh" 2>/dev/null | head -n1 | sed -E 's/^PROXY_VERSION="([^"]*)".*/\1/')
+        if [ -n "$installed_version" ]; then
+            echo -e "${GREEN}✓ 已安装版本: v${installed_version}${NC}"
+        fi
+    fi
+    
     # 检查是否已经安装（更精确的匹配）
     local proxy_marker="# proxyctl - 代理管理工具"
     local source_line="source $INSTALL_DIR/proxy.sh"
@@ -183,6 +191,15 @@ main() {
     # 检查是否已有标记
     if grep -q "$proxy_marker" "$CONFIG_FILE" 2>/dev/null; then
         echo -e "${YELLOW}⚠ 检测到已安装 proxyctl${NC}"
+        
+        # 如果脚本文件已存在，显示当前版本
+        if [ -f "$INSTALL_DIR/proxy.sh" ] && grep -q "^PROXY_VERSION=" "$INSTALL_DIR/proxy.sh" 2>/dev/null; then
+            local installed_version=$(grep -E '^PROXY_VERSION=' "$INSTALL_DIR/proxy.sh" 2>/dev/null | head -n1 | sed -E 's/^PROXY_VERSION="([^"]*)".*/\1/')
+            if [ -n "$installed_version" ]; then
+                echo -e "${YELLOW}  当前版本: v${installed_version}${NC}"
+            fi
+        fi
+        
         # 检查 source 行是否存在且正确
         if ! grep -qF "$source_line" "$CONFIG_FILE" 2>/dev/null; then
             # 检查是否有旧的 source 行需要更新
@@ -245,6 +262,7 @@ main() {
     echo -e "  ${GREEN}proxy set all 127.0.0.1 7890${NC}"
     echo -e "  ${GREEN}proxy on${NC}"
     echo -e "  ${GREEN}proxy status${NC}"
+    echo -e "  ${GREEN}proxy update${NC}  # 更新到最新版本"
     echo ""
 }
 
