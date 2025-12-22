@@ -22,6 +22,7 @@ proxy set socks5 127.0.0.1 7890
 proxy on
 proxy off
 proxy status
+proxy update
 
 ```
 
