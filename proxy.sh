@@ -126,6 +126,17 @@ proxy() {
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo ""
             
+            # 显示代理开启状态（放在最前面）
+            local proxy_enabled=false
+            if [ -n "$http_proxy" ] || [ -n "$HTTP_PROXY" ] || [ -n "$https_proxy" ] || [ -n "$HTTPS_PROXY" ] || [ -n "$socks_proxy" ] || [ -n "$SOCKS_PROXY" ]; then
+                echo "🟢 代理状态: 已开启"
+                proxy_enabled=true
+            else
+                echo "🔴 代理状态: 未开启"
+            fi
+            
+            echo ""
+            
             # 显示代理配置状态
             echo "📋 代理配置:"
             if [ -n "$config_http_proxy" ]; then
@@ -144,17 +155,6 @@ proxy() {
                 echo "   ✓ SOCKS5  $config_socks_proxy"
             else
                 echo "   ✗ SOCKS5  未设置"
-            fi
-
-            echo ""
-            
-            # 显示代理开启状态
-            local proxy_enabled=false
-            if [ -n "$http_proxy" ] || [ -n "$HTTP_PROXY" ] || [ -n "$https_proxy" ] || [ -n "$HTTPS_PROXY" ] || [ -n "$socks_proxy" ] || [ -n "$SOCKS_PROXY" ]; then
-                echo "🟢 代理状态: 已开启"
-                proxy_enabled=true
-            else
-                echo "🔴 代理状态: 未开启"
             fi
 
             # 只在代理开启时进行连通性检测
@@ -181,6 +181,10 @@ proxy() {
             fi
             
             echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "📦 proxyctl v${PROXY_VERSION}"
+            echo "👤 Author: MorvenCat"
+            echo "🔗 https://github.com/${PROXY_REPO}"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             ;;
 
