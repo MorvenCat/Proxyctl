@@ -270,9 +270,33 @@ proxy() {
                 fi
                 echo "  备份文件: $backup_file"
                 echo ""
-                echo "请运行以下命令使更新生效："
-                echo "  source $script_path"
-                echo "  或重新打开终端"
+                
+                # 检测用户的配置文件
+                local config_file=""
+                if [ -n "${ZSH_VERSION:-}" ]; then
+                    if [ -f "$HOME/.zshrc" ]; then
+                        config_file="$HOME/.zshrc"
+                    elif [ -f "$HOME/.zprofile" ]; then
+                        config_file="$HOME/.zprofile"
+                    fi
+                elif [ -n "${BASH_VERSION:-}" ]; then
+                    if [ -f "$HOME/.bashrc" ]; then
+                        config_file="$HOME/.bashrc"
+                    elif [ -f "$HOME/.bash_profile" ]; then
+                        config_file="$HOME/.bash_profile"
+                    elif [ -f "$HOME/.profile" ]; then
+                        config_file="$HOME/.profile"
+                    fi
+                fi
+                
+                if [ -n "$config_file" ]; then
+                    echo "执行以下命令重新加载配置："
+                    echo "  source $config_file"
+                else
+                    echo "执行以下命令重新加载配置："
+                    echo "  source $script_path"
+                fi
+                echo "或者直接重新打开终端。"
                 rm -f "$temp_file"
             else
                 echo "错误: 更新失败，请检查文件权限"
@@ -290,7 +314,7 @@ proxy() {
             echo "代理管理工具"
             echo ""
             echo "用法:"
-            echo "  proxy on                    - 开启代理（从保存的配置恢复）"
+            echo "  proxy on                    - 开启代理"
             echo "  proxy off                   - 关闭代理"
             echo "  proxy set http <host> <port>    - 设置 HTTP 代理"
             echo "  proxy set https <host> <port>   - 设置 HTTPS 代理"
