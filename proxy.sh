@@ -108,9 +108,6 @@ proxy() {
             ;;
 
         status)
-            echo "当前代理状态:"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            
             # 从配置文件中读取代理地址（如果环境变量未设置）
             local config_http_proxy=""
             local config_https_proxy=""
@@ -123,42 +120,47 @@ proxy() {
                 config_socks_proxy=$(bash -c "source ~/.proxy_config 2>/dev/null; echo \"\${socks_proxy:-}\"")
             fi
             
+            # 显示标题
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "📊 代理状态"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            
             # 显示代理配置状态
-            echo "代理配置:"
+            echo "📋 代理配置:"
             if [ -n "$config_http_proxy" ]; then
-                echo "  ✓ HTTP 代理: $config_http_proxy"
+                echo "   ✓ HTTP    $config_http_proxy"
             else
-                echo "  ✗ HTTP 代理: 未设置"
+                echo "   ✗ HTTP    未设置"
             fi
 
             if [ -n "$config_https_proxy" ]; then
-                echo "  ✓ HTTPS 代理: $config_https_proxy"
+                echo "   ✓ HTTPS   $config_https_proxy"
             else
-                echo "  ✗ HTTPS 代理: 未设置"
+                echo "   ✗ HTTPS   未设置"
             fi
 
             if [ -n "$config_socks_proxy" ]; then
-                echo "  ✓ SOCKS5 代理: $config_socks_proxy"
+                echo "   ✓ SOCKS5  $config_socks_proxy"
             else
-                echo "  ✗ SOCKS5 代理: 未设置"
+                echo "   ✗ SOCKS5  未设置"
             fi
 
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
             
             # 显示代理开启状态
             local proxy_enabled=false
             if [ -n "$http_proxy" ] || [ -n "$HTTP_PROXY" ] || [ -n "$https_proxy" ] || [ -n "$HTTPS_PROXY" ] || [ -n "$socks_proxy" ] || [ -n "$SOCKS_PROXY" ]; then
-                echo "✓ 代理状态: 已开启"
+                echo "🟢 代理状态: 已开启"
                 proxy_enabled=true
             else
-                echo "✗ 代理状态: 未开启"
+                echo "🔴 代理状态: 未开启"
             fi
 
             # 只在代理开启时进行连通性检测
             if [ "$proxy_enabled" = true ]; then
-                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                echo "代理检测:"
-                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo ""
+                echo "🌐 连通性检测:"
                 
                 # 检测函数
                 check_website() {
@@ -167,18 +169,19 @@ proxy() {
                     local timeout=5
                     
                     if curl -s --max-time "$timeout" --head "$url" > /dev/null 2>&1; then
-                        echo "✓ $name: 可达"
+                        echo "   ✓ $name"
                     else
-                        echo "✗ $name: 不可达"
+                        echo "   ✗ $name"
                     fi
                 }
                 
                 check_website "https://www.google.com" "Google"
                 check_website "https://www.github.com" "GitHub"
                 check_website "https://www.youtube.com" "YouTube"
-                
-                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             fi
+            
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             ;;
 
         update)
