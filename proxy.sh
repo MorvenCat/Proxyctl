@@ -146,34 +146,39 @@ proxy() {
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             
             # 显示代理开启状态
+            local proxy_enabled=false
             if [ -n "$http_proxy" ] || [ -n "$HTTP_PROXY" ] || [ -n "$https_proxy" ] || [ -n "$HTTPS_PROXY" ] || [ -n "$socks_proxy" ] || [ -n "$SOCKS_PROXY" ]; then
                 echo "✓ 代理状态: 已开启"
+                proxy_enabled=true
             else
                 echo "✗ 代理状态: 未开启"
             fi
 
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "代理检测:"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            
-            # 检测函数
-            check_website() {
-                local url="$1"
-                local name="$2"
-                local timeout=5
+            # 只在代理开启时进行连通性检测
+            if [ "$proxy_enabled" = true ]; then
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "代理检测:"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 
-                if curl -s --max-time "$timeout" --head "$url" > /dev/null 2>&1; then
-                    echo "✓ $name: 可达"
-                else
-                    echo "✗ $name: 不可达"
-                fi
-            }
-            
-            check_website "https://www.google.com" "Google"
-            check_website "https://www.github.com" "GitHub"
-            check_website "https://www.youtube.com" "YouTube"
-            
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                # 检测函数
+                check_website() {
+                    local url="$1"
+                    local name="$2"
+                    local timeout=5
+                    
+                    if curl -s --max-time "$timeout" --head "$url" > /dev/null 2>&1; then
+                        echo "✓ $name: 可达"
+                    else
+                        echo "✗ $name: 不可达"
+                    fi
+                }
+                
+                check_website "https://www.google.com" "Google"
+                check_website "https://www.github.com" "GitHub"
+                check_website "https://www.youtube.com" "YouTube"
+                
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            fi
             ;;
 
         update)
