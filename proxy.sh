@@ -4,7 +4,7 @@
 # 使用方法: source proxy.sh 或将其添加到 ~/.zshrc 或 ~/.bashrc
 
 # 版本号
-PROXY_VERSION="1.4.2"
+PROXY_VERSION="1.4.3"
 PROXY_REPO="MorvenCat/Proxyctl"
 PROXY_SCRIPT_URL="https://raw.githubusercontent.com/${PROXY_REPO}/main/proxy.sh"
 
@@ -717,7 +717,8 @@ EOF
 
             # 尝试通过 GitHub API 获取 main 最新 commit SHA，以绕开 raw 的缓存
             local download_url="$PROXY_SCRIPT_URL"
-            local api_url="https://api.github.com/repos/${PROXY_REPO}/commits/main"
+            # GitHub API 也可能被缓存，这里加 ts 参数强制取最新
+            local api_url="https://api.github.com/repos/${PROXY_REPO}/commits/main?ts=$(date +%s)"
             local latest_sha=""
             if command -v curl >/dev/null 2>&1; then
                 latest_sha="$(curl -fsSL "$api_url" 2>/dev/null | grep -m1 '\"sha\"' | sed -E 's/.*\"sha\": \"([0-9a-f]+)\".*/\\1/')"
