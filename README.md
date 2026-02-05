@@ -23,6 +23,7 @@ proxy on
 proxy off
 proxy status
 proxy update
+proxy api            # 进入交互式菜单（若安装 fzf 会自动使用）
 proxy api set openai default https://relay.example.com/v1 sk-xxx
 proxy api use openai default
 proxy api set anthropic work https://relay.example.com sk-ant-xxx

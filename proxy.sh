@@ -4,7 +4,7 @@
 # 使用方法: source proxy.sh 或将其添加到 ~/.zshrc 或 ~/.bashrc
 
 # 版本号
-PROXY_VERSION="1.3.0"
+PROXY_VERSION="1.4.0"
 PROXY_REPO="MorvenCat/Proxyctl"
 PROXY_SCRIPT_URL="https://raw.githubusercontent.com/${PROXY_REPO}/main/proxy.sh"
 
@@ -127,15 +127,160 @@ proxy() {
                     | sed 's/^_\\+//; s/_\\+$//'
             }
 
+            has_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+            choose_item() {
+                # choose_item "Prompt" item1 item2 ...
+                local prompt="$1"
+                shift || true
+                local items=("$@")
+
+                if [ "${#items[@]}" -eq 0 ]; then
+                    return 1
+                fi
+
+                if has_cmd fzf; then
+                    # fzf 交互选择（如果用户已安装）
+                    printf '%s\n' "${items[@]}" | fzf --prompt="${prompt}> " --height=12 --reverse
+                    return $?
+                fi
+
+                # select 兜底（bash 内置）
+                echo "$prompt"
+                local PS3="请输入编号: "
+                select opt in "${items[@]}"; do
+                    if [ -n "${opt:-}" ]; then
+                        echo "$opt"
+                        return 0
+                    fi
+                    echo "无效选择，请重试。"
+                done
+            }
+
+            prompt_with_default() {
+                # prompt_with_default "Label" "default"
+                local label="$1"
+                local def="$2"
+                local val=""
+                read -r -p "${label} (默认: ${def}): " val
+                if [ -z "$val" ]; then
+                    val="$def"
+                fi
+                printf '%s' "$val"
+            }
+
+            prompt_required() {
+                # prompt_required "Label"
+                local label="$1"
+                local val=""
+                while true; do
+                    read -r -p "${label}: " val
+                    if [ -n "$val" ]; then
+                        printf '%s' "$val"
+                        return 0
+                    fi
+                    echo "不能为空，请重试。"
+                done
+            }
+
+            prompt_secret_required() {
+                # prompt_secret_required "Label"
+                local label="$1"
+                local val=""
+                while true; do
+                    read -r -s -p "${label}: " val
+                    echo ""
+                    if [ -n "$val" ]; then
+                        printf '%s' "$val"
+                        return 0
+                    fi
+                    echo "不能为空，请重试。"
+                done
+            }
+
+            list_providers() {
+                mkdir -p "$PROXY_API_DIR" 2>/dev/null || true
+                local d
+                for d in "$PROXY_API_DIR"/*; do
+                    [ -d "$d" ] || continue
+                    basename "$d"
+                done
+            }
+
+            list_profiles() {
+                local p="$1"
+                local f
+                for f in "$PROXY_API_DIR/$p"/*.sh; do
+                    [ -e "$f" ] || continue
+                    basename "$f" .sh
+                done
+            }
+
             local provider profile
             provider="$(sanitize_name "$provider_raw")"
             profile="$(sanitize_name "$profile_raw")"
 
             case "$sub" in
+                ""|menu)
+                    # 交互菜单：提升体验（无依赖；若安装 fzf 则自动使用）
+                    while true; do
+                        local action
+                        action="$(choose_item "选择操作" "set(新增/覆盖)" "use(启用)" "status(查看状态)" "list(列表)" "on(启用上次)" "off(关闭)" "rm(删除)" "exit")" || return 1
+
+                        case "$action" in
+                            set*)
+                                proxy api set
+                                ;;
+                            use*)
+                                proxy api use
+                                ;;
+                            status*)
+                                proxy api status
+                                ;;
+                            list*)
+                                proxy api list
+                                ;;
+                            on*)
+                                proxy api on
+                                ;;
+                            off*)
+                                proxy api off
+                                ;;
+                            rm*)
+                                proxy api rm
+                                ;;
+                            exit*)
+                                return 0
+                                ;;
+                        esac
+                        echo ""
+                    done
+                    ;;
+
                 set)
+                    # 参数不全则进入交互向导
+                    if [ -z "$provider" ] || [ -z "$profile" ] || [ -z "$base_url" ] || [ -z "$api_key" ]; then
+                        local picked_provider picked_profile picked_base picked_key
+                        picked_provider="$(choose_item "选择 provider" "openai" "anthropic")" || return 1
+                        picked_profile="$(prompt_with_default "Profile 名称" "default")"
+                        picked_profile="$(sanitize_name "$picked_profile")"
+
+                        if [ "$picked_provider" = "openai" ]; then
+                            picked_base="$(prompt_with_default "Base URL（中转/官方）" "https://api.openai.com/v1")"
+                        else
+                            picked_base="$(prompt_with_default "Base URL（中转/官方）" "https://api.anthropic.com")"
+                        fi
+                        picked_key="$(prompt_secret_required "API Key（不会回显）")"
+
+                        provider="$(sanitize_name "$picked_provider")"
+                        profile="$picked_profile"
+                        base_url="$picked_base"
+                        api_key="$picked_key"
+                    fi
+
                     if [ -z "$provider" ] || [ -z "$profile" ] || [ -z "$base_url" ] || [ -z "$api_key" ]; then
                         echo "用法: proxy api set <openai|anthropic> <profile> <base_url> <api_key>"
-                        echo "示例: proxy api set openai default https://relay.example.com/v1 sk-xxx"
+                        echo "或直接运行: proxy api set  进入交互配置"
                         return 1
                     fi
 
@@ -172,9 +317,30 @@ EOF
                     ;;
 
                 use)
+                    # 参数不全则进入交互选择
+                    if [ -z "$provider" ] || [ -z "$profile" ]; then
+                        local providers profiles picked_p picked_pf
+                        mapfile -t providers < <(list_providers)
+                        if [ "${#providers[@]}" -eq 0 ]; then
+                            echo "错误: 未找到任何 API 配置，请先运行: proxy api set"
+                            return 1
+                        fi
+
+                        picked_p="$(choose_item "选择 provider" "${providers[@]}")" || return 1
+                        mapfile -t profiles < <(list_profiles "$picked_p")
+                        if [ "${#profiles[@]}" -eq 0 ]; then
+                            echo "错误: provider '$picked_p' 下没有 profile，请先运行: proxy api set $picked_p <profile> <base_url> <api_key>"
+                            return 1
+                        fi
+                        picked_pf="$(choose_item "选择 profile" "${profiles[@]}")" || return 1
+
+                        provider="$(sanitize_name "$picked_p")"
+                        profile="$(sanitize_name "$picked_pf")"
+                    fi
+
                     if [ -z "$provider" ] || [ -z "$profile" ]; then
                         echo "用法: proxy api use <provider> <profile>"
-                        echo "示例: proxy api use openai default"
+                        echo "或直接运行: proxy api use  进入交互选择"
                         return 1
                     fi
 
@@ -320,8 +486,33 @@ EOF
                     ;;
 
                 rm)
+                    # 参数不全则进入交互选择 + 确认
+                    if [ -z "$provider" ] || [ -z "$profile" ]; then
+                        local providers profiles picked_p picked_pf confirm
+                        mapfile -t providers < <(list_providers)
+                        if [ "${#providers[@]}" -eq 0 ]; then
+                            echo "错误: 未找到任何 API 配置"
+                            return 1
+                        fi
+                        picked_p="$(choose_item "选择 provider" "${providers[@]}")" || return 1
+                        mapfile -t profiles < <(list_profiles "$picked_p")
+                        if [ "${#profiles[@]}" -eq 0 ]; then
+                            echo "错误: provider '$picked_p' 下没有 profile"
+                            return 1
+                        fi
+                        picked_pf="$(choose_item "选择 profile" "${profiles[@]}")" || return 1
+                        confirm="$(choose_item "确认删除 ${picked_p}/${picked_pf} ?" "no" "yes")" || return 1
+                        if [ "$confirm" != "yes" ]; then
+                            echo "已取消。"
+                            return 0
+                        fi
+                        provider="$(sanitize_name "$picked_p")"
+                        profile="$(sanitize_name "$picked_pf")"
+                    fi
+
                     if [ -z "$provider" ] || [ -z "$profile" ]; then
                         echo "用法: proxy api rm <provider> <profile>"
+                        echo "或直接运行: proxy api rm  进入交互选择"
                         return 1
                     fi
 
@@ -341,6 +532,7 @@ EOF
                     echo "API 配置管理（中转 URL / API Key profiles）"
                     echo ""
                     echo "用法:"
+                    echo "  proxy api                                            - 进入交互式菜单"
                     echo "  proxy api set <provider> <profile> <base_url> <api_key>  - 保存/覆盖一个 profile"
                     echo "  proxy api use <provider> <profile>                       - 启用某个 profile（导出厂商标准变量）"
                     echo "  proxy api on                                             - 启用上次使用的 profile"
