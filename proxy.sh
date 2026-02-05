@@ -4,7 +4,7 @@
 # 使用方法: source proxy.sh 或将其添加到 ~/.zshrc 或 ~/.bashrc
 
 # 版本号
-PROXY_VERSION="1.4.0"
+PROXY_VERSION="1.4.1"
 PROXY_REPO="MorvenCat/Proxyctl"
 PROXY_SCRIPT_URL="https://raw.githubusercontent.com/${PROXY_REPO}/main/proxy.sh"
 
@@ -129,6 +129,18 @@ proxy() {
 
             has_cmd() { command -v "$1" >/dev/null 2>&1; }
 
+            is_utf8() {
+                local cm
+                cm="$(locale charmap 2>/dev/null || true)"
+                echo "$cm" | grep -qi "utf-8"
+            }
+
+            # 终端不支持 UTF-8 时，交互提示降级为纯 ASCII，避免乱码
+            local UI_UTF8=false
+            if is_utf8; then
+                UI_UTF8=true
+            fi
+
             choose_item() {
                 # choose_item "Prompt" item1 item2 ...
                 local prompt="$1"
@@ -225,7 +237,11 @@ proxy() {
                     # 交互菜单：提升体验（无依赖；若安装 fzf 则自动使用）
                     while true; do
                         local action
-                        action="$(choose_item "选择操作" "set(新增/覆盖)" "use(启用)" "status(查看状态)" "list(列表)" "on(启用上次)" "off(关闭)" "rm(删除)" "exit")" || return 1
+                        if [ "$UI_UTF8" = true ]; then
+                            action="$(choose_item "选择操作" "set" "use" "status" "list" "on" "off" "rm" "exit")" || return 1
+                        else
+                            action="$(choose_item "Choose action" "set" "use" "status" "list" "on" "off" "rm" "exit")" || return 1
+                        fi
 
                         case "$action" in
                             set*)
@@ -261,16 +277,33 @@ proxy() {
                     # 参数不全则进入交互向导
                     if [ -z "$provider" ] || [ -z "$profile" ] || [ -z "$base_url" ] || [ -z "$api_key" ]; then
                         local picked_provider picked_profile picked_base picked_key
-                        picked_provider="$(choose_item "选择 provider" "openai" "anthropic")" || return 1
-                        picked_profile="$(prompt_with_default "Profile 名称" "default")"
+                        if [ "$UI_UTF8" = true ]; then
+                            picked_provider="$(choose_item "选择 provider" "openai" "anthropic")" || return 1
+                            picked_profile="$(prompt_with_default "Profile 名称" "default")"
+                        else
+                            picked_provider="$(choose_item "Choose provider" "openai" "anthropic")" || return 1
+                            picked_profile="$(prompt_with_default "Profile name" "default")"
+                        fi
                         picked_profile="$(sanitize_name "$picked_profile")"
 
                         if [ "$picked_provider" = "openai" ]; then
-                            picked_base="$(prompt_with_default "Base URL（中转/官方）" "https://api.openai.com/v1")"
+                            if [ "$UI_UTF8" = true ]; then
+                                picked_base="$(prompt_with_default "Base URL（中转/官方）" "https://api.openai.com/v1")"
+                            else
+                                picked_base="$(prompt_with_default "Base URL" "https://api.openai.com/v1")"
+                            fi
                         else
-                            picked_base="$(prompt_with_default "Base URL（中转/官方）" "https://api.anthropic.com")"
+                            if [ "$UI_UTF8" = true ]; then
+                                picked_base="$(prompt_with_default "Base URL（中转/官方）" "https://api.anthropic.com")"
+                            else
+                                picked_base="$(prompt_with_default "Base URL" "https://api.anthropic.com")"
+                            fi
                         fi
-                        picked_key="$(prompt_secret_required "API Key（不会回显）")"
+                        if [ "$UI_UTF8" = true ]; then
+                            picked_key="$(prompt_secret_required "API Key（不会回显）")"
+                        else
+                            picked_key="$(prompt_secret_required "API key (hidden)")"
+                        fi
 
                         provider="$(sanitize_name "$picked_provider")"
                         profile="$picked_profile"
@@ -326,13 +359,21 @@ EOF
                             return 1
                         fi
 
-                        picked_p="$(choose_item "选择 provider" "${providers[@]}")" || return 1
+                        if [ "$UI_UTF8" = true ]; then
+                            picked_p="$(choose_item "选择 provider" "${providers[@]}")" || return 1
+                        else
+                            picked_p="$(choose_item "Choose provider" "${providers[@]}")" || return 1
+                        fi
                         mapfile -t profiles < <(list_profiles "$picked_p")
                         if [ "${#profiles[@]}" -eq 0 ]; then
                             echo "错误: provider '$picked_p' 下没有 profile，请先运行: proxy api set $picked_p <profile> <base_url> <api_key>"
                             return 1
                         fi
-                        picked_pf="$(choose_item "选择 profile" "${profiles[@]}")" || return 1
+                        if [ "$UI_UTF8" = true ]; then
+                            picked_pf="$(choose_item "选择 profile" "${profiles[@]}")" || return 1
+                        else
+                            picked_pf="$(choose_item "Choose profile" "${profiles[@]}")" || return 1
+                        fi
 
                         provider="$(sanitize_name "$picked_p")"
                         profile="$(sanitize_name "$picked_pf")"
@@ -494,14 +535,23 @@ EOF
                             echo "错误: 未找到任何 API 配置"
                             return 1
                         fi
-                        picked_p="$(choose_item "选择 provider" "${providers[@]}")" || return 1
+                        if [ "$UI_UTF8" = true ]; then
+                            picked_p="$(choose_item "选择 provider" "${providers[@]}")" || return 1
+                        else
+                            picked_p="$(choose_item "Choose provider" "${providers[@]}")" || return 1
+                        fi
                         mapfile -t profiles < <(list_profiles "$picked_p")
                         if [ "${#profiles[@]}" -eq 0 ]; then
                             echo "错误: provider '$picked_p' 下没有 profile"
                             return 1
                         fi
-                        picked_pf="$(choose_item "选择 profile" "${profiles[@]}")" || return 1
-                        confirm="$(choose_item "确认删除 ${picked_p}/${picked_pf} ?" "no" "yes")" || return 1
+                        if [ "$UI_UTF8" = true ]; then
+                            picked_pf="$(choose_item "选择 profile" "${profiles[@]}")" || return 1
+                            confirm="$(choose_item "确认删除 ${picked_p}/${picked_pf} ?" "no" "yes")" || return 1
+                        else
+                            picked_pf="$(choose_item "Choose profile" "${profiles[@]}")" || return 1
+                            confirm="$(choose_item "Confirm delete ${picked_p}/${picked_pf} ?" "no" "yes")" || return 1
+                        fi
                         if [ "$confirm" != "yes" ]; then
                             echo "已取消。"
                             return 0
