@@ -4,7 +4,7 @@
 # 使用方法: source proxy.sh 或将其添加到 ~/.zshrc 或 ~/.bashrc
 
 # 版本号
-PROXY_VERSION="1.4.4"
+PROXY_VERSION="1.4.5"
 PROXY_REPO="MorvenCat/Proxyctl"
 PROXY_SCRIPT_URL="https://raw.githubusercontent.com/${PROXY_REPO}/main/proxy.sh"
 
@@ -738,6 +738,8 @@ EOF
             # 创建临时文件
             local temp_file=$(mktemp)
             local download_success=0
+            local curl_rc=0
+            local wget_rc=0
 
             # 尝试通过 GitHub API 获取 main 最新 commit SHA，以绕开 raw 的缓存
             local download_url="$PROXY_SCRIPT_URL"
@@ -745,9 +747,9 @@ EOF
             local api_url="https://api.github.com/repos/${PROXY_REPO}/commits/main?ts=$(date +%s)"
             local latest_sha=""
             if command -v curl >/dev/null 2>&1; then
-                latest_sha="$(curl -fsSL "$api_url" 2>/dev/null | grep -m1 '\"sha\"' | sed -E 's/.*\"sha\": \"([0-9a-f]+)\".*/\\1/')"
+                latest_sha="$(curl -fsSL --connect-timeout 5 --max-time 15 --retry 2 --retry-delay 1 "$api_url" 2>/dev/null | grep -m1 '\"sha\"' | sed -E 's/.*\"sha\": \"([0-9a-f]+)\".*/\\1/')"
             elif command -v wget >/dev/null 2>&1; then
-                latest_sha="$(wget -qO- "$api_url" 2>/dev/null | grep -m1 '\"sha\"' | sed -E 's/.*\"sha\": \"([0-9a-f]+)\".*/\\1/')"
+                latest_sha="$(wget -qO- --timeout=15 --tries=2 "$api_url" 2>/dev/null | grep -m1 '\"sha\"' | sed -E 's/.*\"sha\": \"([0-9a-f]+)\".*/\\1/')"
             fi
             if [ -n "$latest_sha" ]; then
                 download_url="https://raw.githubusercontent.com/${PROXY_REPO}/${latest_sha}/proxy.sh"
@@ -755,12 +757,16 @@ EOF
             
             # 下载最新版本
             if command -v curl >/dev/null 2>&1; then
-                if curl -fsSL "$download_url" -o "$temp_file" 2>/dev/null; then
+                if curl -fsSL --connect-timeout 5 --max-time 30 --retry 3 --retry-delay 1 --retry-all-errors "$download_url" -o "$temp_file" 2>/dev/null; then
                     download_success=1
+                else
+                    curl_rc=$?
                 fi
             elif command -v wget >/dev/null 2>&1; then
-                if wget -q "$download_url" -O "$temp_file" 2>/dev/null; then
+                if wget -q --timeout=30 --tries=3 "$download_url" -O "$temp_file" 2>/dev/null; then
                     download_success=1
+                else
+                    wget_rc=$?
                 fi
             else
                 echo "错误: 未找到 curl 或 wget，无法下载更新"
@@ -770,6 +776,12 @@ EOF
             
             if [ $download_success -eq 0 ] || [ ! -f "$temp_file" ]; then
                 echo "错误: 下载失败，请检查网络连接"
+                echo "  URL: $download_url"
+                [ "$curl_rc" -ne 0 ] && echo "  curl exit code: $curl_rc"
+                [ "$wget_rc" -ne 0 ] && echo "  wget exit code: $wget_rc"
+                if [ -n "${http_proxy:-}" ] || [ -n "${HTTP_PROXY:-}" ] || [ -n "${https_proxy:-}" ] || [ -n "${HTTPS_PROXY:-}" ]; then
+                    echo "  检测到你设置了终端代理环境变量；如果本地代理未开启/不稳定，建议先执行: proxy off  再重试 proxy update"
+                fi
                 rm -f "$temp_file"
                 return 1
             fi
