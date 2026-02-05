@@ -4,7 +4,7 @@
 # 使用方法: source proxy.sh 或将其添加到 ~/.zshrc 或 ~/.bashrc
 
 # 版本号
-PROXY_VERSION="1.4.3"
+PROXY_VERSION="1.4.4"
 PROXY_REPO="MorvenCat/Proxyctl"
 PROXY_SCRIPT_URL="https://raw.githubusercontent.com/${PROXY_REPO}/main/proxy.sh"
 
@@ -158,15 +158,39 @@ proxy() {
                 fi
 
                 # select 兜底（bash 内置）
-                echo "$prompt"
-                local PS3="请输入编号: "
-                select opt in "${items[@]}"; do
-                    if [ -n "${opt:-}" ]; then
-                        echo "$opt"
-                        return 0
-                    fi
-                    echo "无效选择，请重试。"
-                done
+                # 注意：select 会把菜单/提示输出到 stdout；这里把它们全部重定向到 stderr，
+                # 只把最终选择写回 stdout，避免被命令替换 $(...) 捕获导致 action 变量混入提示文本。
+                if [ "$UI_UTF8" = true ]; then
+                    echo "$prompt" >&2
+                else
+                    echo "$prompt" >&2
+                fi
+
+                local PS3
+                if [ "$UI_UTF8" = true ]; then
+                    PS3="请输入编号: "
+                else
+                    PS3="Select number: "
+                fi
+
+                local opt=""
+                exec 3>&1
+                {
+                    select opt in "${items[@]}"; do
+                        if [ -n "${opt:-}" ]; then
+                            printf '%s' "$opt" >&3
+                            break
+                        fi
+                        if [ "$UI_UTF8" = true ]; then
+                            echo "无效选择，请重试。" >&2
+                        else
+                            echo "Invalid selection, try again." >&2
+                        fi
+                    done
+                } 1>&2
+                exec 3>&-
+
+                [ -n "${opt:-}" ]
             }
 
             prompt_with_default() {
