@@ -23,6 +23,11 @@ proxy on
 proxy off
 proxy status
 proxy update
+proxy api set openai default https://relay.example.com/v1 sk-xxx
+proxy api use openai default
+proxy api set anthropic work https://relay.example.com sk-ant-xxx
+proxy api use anthropic work
+proxy api status
 
 ```
 

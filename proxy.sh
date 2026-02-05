@@ -4,9 +4,13 @@
 # 使用方法: source proxy.sh 或将其添加到 ~/.zshrc 或 ~/.bashrc
 
 # 版本号
-PROXY_VERSION="1.2.0"
+PROXY_VERSION="1.3.0"
 PROXY_REPO="MorvenCat/Proxyctl"
 PROXY_SCRIPT_URL="https://raw.githubusercontent.com/${PROXY_REPO}/main/proxy.sh"
+
+# API 配置（中转 URL / API Key profiles）
+PROXY_API_DIR="$HOME/.proxy_api.d"
+PROXY_API_STATE="$HOME/.proxy_api_state"
 
 proxy() {
     local command="$1"
@@ -105,6 +109,252 @@ proxy() {
                 [ -n "$socks_proxy" ] && echo "export socks_proxy=\"${socks_proxy}\""
                 [ -n "$SOCKS_PROXY" ] && echo "export SOCKS_PROXY=\"${SOCKS_PROXY}\""
             } > ~/.proxy_config
+            ;;
+
+        api)
+            # API profiles: 按厂商保存多组中转 URL / API Key，并按厂商标准变量导出
+            local sub="$2"
+            local provider_raw="$3"
+            local profile_raw="$4"
+            local base_url="$5"
+            local api_key="$6"
+
+            # name 规范化为安全文件名
+            sanitize_name() {
+                printf '%s' "${1:-}" \
+                    | tr '[:upper:]' '[:lower:]' \
+                    | tr -cs 'a-z0-9._-' '_' \
+                    | sed 's/^_\\+//; s/_\\+$//'
+            }
+
+            local provider profile
+            provider="$(sanitize_name "$provider_raw")"
+            profile="$(sanitize_name "$profile_raw")"
+
+            case "$sub" in
+                set)
+                    if [ -z "$provider" ] || [ -z "$profile" ] || [ -z "$base_url" ] || [ -z "$api_key" ]; then
+                        echo "用法: proxy api set <openai|anthropic> <profile> <base_url> <api_key>"
+                        echo "示例: proxy api set openai default https://relay.example.com/v1 sk-xxx"
+                        return 1
+                    fi
+
+                    mkdir -p "$PROXY_API_DIR/$provider"
+                    chmod 700 "$PROXY_API_DIR" "$PROXY_API_DIR/$provider" 2>/dev/null || true
+
+                    local profile_file="$PROXY_API_DIR/$provider/${profile}.sh"
+                    cat > "$profile_file" <<EOF
+# proxyctl api profile - 自动生成，请勿手动编辑
+export PROXY_API_PROVIDER="${provider}"
+export PROXY_API_PROFILE="${profile}"
+export PROXY_API_BASE_URL="${base_url}"
+export PROXY_API_KEY="${api_key}"
+EOF
+
+                    # 厂商标准变量（优先 OpenAI / Anthropic）
+                    if [ "$provider" = "openai" ]; then
+                        cat >> "$profile_file" <<EOF
+export OPENAI_API_KEY="${api_key}"
+export OPENAI_BASE_URL="${base_url}"
+export OPENAI_API_BASE="${base_url}"
+EOF
+                    elif [ "$provider" = "anthropic" ]; then
+                        cat >> "$profile_file" <<EOF
+export ANTHROPIC_API_KEY="${api_key}"
+export ANTHROPIC_BASE_URL="${base_url}"
+export ANTHROPIC_API_URL="${base_url}"
+EOF
+                    fi
+
+                    chmod 600 "$profile_file" 2>/dev/null || true
+                    echo "✓ 已保存 API 配置: ${provider}/${profile}"
+                    echo "  文件: $profile_file"
+                    ;;
+
+                use)
+                    if [ -z "$provider" ] || [ -z "$profile" ]; then
+                        echo "用法: proxy api use <provider> <profile>"
+                        echo "示例: proxy api use openai default"
+                        return 1
+                    fi
+
+                    local profile_file="$PROXY_API_DIR/$provider/${profile}.sh"
+                    if [ ! -f "$profile_file" ]; then
+                        echo "错误: 未找到 API 配置: ${provider}/${profile}"
+                        echo "可用列表: proxy api list ${provider}"
+                        return 1
+                    fi
+
+                    # shellcheck disable=SC1090
+                    source "$profile_file"
+                    printf '%s %s\n' "$provider" "$profile" > "$PROXY_API_STATE"
+                    chmod 600 "$PROXY_API_STATE" 2>/dev/null || true
+
+                    echo "✓ 已启用 API 配置: ${provider}/${profile}"
+                    echo "  BASE_URL: ${PROXY_API_BASE_URL}"
+                    ;;
+
+                on)
+                    if [ ! -f "$PROXY_API_STATE" ]; then
+                        echo "错误: 未找到上次使用的 API 配置（$PROXY_API_STATE 不存在）"
+                        echo "请先使用: proxy api use <provider> <profile>"
+                        return 1
+                    fi
+
+                    local last_provider last_profile
+                    last_provider="$(awk '{print $1}' "$PROXY_API_STATE" 2>/dev/null)"
+                    last_profile="$(awk '{print $2}' "$PROXY_API_STATE" 2>/dev/null)"
+                    if [ -z "$last_provider" ] || [ -z "$last_profile" ]; then
+                        echo "错误: 状态文件内容异常: $PROXY_API_STATE"
+                        return 1
+                    fi
+
+                    provider="$(sanitize_name "$last_provider")"
+                    profile="$(sanitize_name "$last_profile")"
+                    local profile_file="$PROXY_API_DIR/$provider/${profile}.sh"
+                    if [ ! -f "$profile_file" ]; then
+                        echo "错误: 未找到上次使用的 API 配置文件: ${provider}/${profile}"
+                        echo "可用列表: proxy api list ${provider}"
+                        return 1
+                    fi
+
+                    # shellcheck disable=SC1090
+                    source "$profile_file"
+                    echo "✓ 已启用上次 API 配置: ${provider}/${profile}"
+                    echo "  BASE_URL: ${PROXY_API_BASE_URL}"
+                    ;;
+
+                off)
+                    local off_provider off_profile
+                    if [ -n "${PROXY_API_PROVIDER:-}" ] && [ -n "${PROXY_API_PROFILE:-}" ]; then
+                        off_provider="$(sanitize_name "$PROXY_API_PROVIDER")"
+                        off_profile="$(sanitize_name "$PROXY_API_PROFILE")"
+                    elif [ -f "$PROXY_API_STATE" ]; then
+                        off_provider="$(awk '{print $1}' "$PROXY_API_STATE" 2>/dev/null)"
+                        off_profile="$(awk '{print $2}' "$PROXY_API_STATE" 2>/dev/null)"
+                        off_provider="$(sanitize_name "$off_provider")"
+                        off_profile="$(sanitize_name "$off_profile")"
+                    fi
+
+                    if [ -z "$off_provider" ] || [ -z "$off_profile" ]; then
+                        echo "⚠ 当前未启用任何 API 配置"
+                        return 0
+                    fi
+
+                    local profile_file="$PROXY_API_DIR/$off_provider/${off_profile}.sh"
+                    if [ -f "$profile_file" ]; then
+                        local vars
+                        vars="$(grep -E '^export [A-Za-z_][A-Za-z0-9_]*=' "$profile_file" 2>/dev/null \
+                            | sed -E 's/^export ([A-Za-z_][A-Za-z0-9_]*)=.*/\1/')"
+                        for v in $vars; do
+                            unset "$v"
+                        done
+                    else
+                        # 兜底：至少清理通用/常见变量
+                        unset PROXY_API_PROVIDER PROXY_API_PROFILE PROXY_API_BASE_URL PROXY_API_KEY
+                        unset OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE
+                        unset ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_API_URL
+                    fi
+
+                    echo "✓ 已关闭 API 配置: ${off_provider}/${off_profile}"
+                    ;;
+
+                status)
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    echo "🔑 API 配置状态"
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    if [ -n "${PROXY_API_PROVIDER:-}" ] && [ -n "${PROXY_API_PROFILE:-}" ]; then
+                        echo "✓ 当前启用: ${PROXY_API_PROVIDER}/${PROXY_API_PROFILE}"
+                        echo "✓ BASE_URL : ${PROXY_API_BASE_URL:-未设置}"
+                        if [ -n "${PROXY_API_KEY:-}" ]; then
+                            echo "✓ API_KEY  : 已设置"
+                        else
+                            echo "✗ API_KEY  : 未设置"
+                        fi
+                    else
+                        echo "✗ 当前未启用任何 API 配置"
+                        if [ -f "$PROXY_API_STATE" ]; then
+                            echo "  上次使用: $(cat "$PROXY_API_STATE" 2>/dev/null)"
+                        fi
+                    fi
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    ;;
+
+                list)
+                    if [ -z "$provider" ]; then
+                        mkdir -p "$PROXY_API_DIR" 2>/dev/null || true
+                        echo "已保存的 API providers/profiles:"
+                        local any_provider=false
+                        for d in "$PROXY_API_DIR"/*; do
+                            [ -d "$d" ] || continue
+                            any_provider=true
+                            local p
+                            p="$(basename "$d")"
+                            echo "- $p:"
+                            local any_profile=false
+                            for f in "$d"/*.sh; do
+                                [ -e "$f" ] || continue
+                                any_profile=true
+                                echo "  - $(basename "$f" .sh)"
+                            done
+                            if [ "$any_profile" = false ]; then
+                                echo "  - (空)"
+                            fi
+                        done
+                        if [ "$any_provider" = false ]; then
+                            echo "- (空)"
+                        fi
+                    else
+                        local provider_dir="$PROXY_API_DIR/$provider"
+                        echo "已保存的 profiles (${provider}):"
+                        local found=false
+                        for f in "$provider_dir"/*.sh; do
+                            [ -e "$f" ] || continue
+                            found=true
+                            echo " - $(basename "$f" .sh)"
+                        done
+                        if [ "$found" = false ]; then
+                            echo " - (空)"
+                        fi
+                    fi
+                    ;;
+
+                rm)
+                    if [ -z "$provider" ] || [ -z "$profile" ]; then
+                        echo "用法: proxy api rm <provider> <profile>"
+                        return 1
+                    fi
+
+                    local profile_file="$PROXY_API_DIR/$provider/${profile}.sh"
+                    if [ -f "$profile_file" ]; then
+                        rm -f "$profile_file"
+                        echo "✓ 已删除 API 配置: ${provider}/${profile}"
+                        if [ -f "$PROXY_API_STATE" ] && [ "$(cat "$PROXY_API_STATE" 2>/dev/null)" = "${provider} ${profile}" ]; then
+                            rm -f "$PROXY_API_STATE"
+                        fi
+                    else
+                        echo "⚠ 未找到 API 配置: ${provider}/${profile}"
+                    fi
+                    ;;
+
+                *)
+                    echo "API 配置管理（中转 URL / API Key profiles）"
+                    echo ""
+                    echo "用法:"
+                    echo "  proxy api set <provider> <profile> <base_url> <api_key>  - 保存/覆盖一个 profile"
+                    echo "  proxy api use <provider> <profile>                       - 启用某个 profile（导出厂商标准变量）"
+                    echo "  proxy api on                                             - 启用上次使用的 profile"
+                    echo "  proxy api off                                            - 关闭当前/上次 profile（unset 导出变量）"
+                    echo "  proxy api status                                         - 查看当前 API 配置状态"
+                    echo "  proxy api list [provider]                                - 列出 profiles"
+                    echo "  proxy api rm <provider> <profile>                        - 删除 profile"
+                    echo ""
+                    echo "示例:"
+                    echo "  proxy api set openai default https://relay.example.com/v1 sk-xxx"
+                    echo "  proxy api use openai default"
+                    echo "  proxy api status"
+                    ;;
+            esac
             ;;
 
         status)
@@ -327,6 +577,7 @@ proxy() {
             echo "  proxy set https <host> <port>   - 设置 HTTPS 代理"
             echo "  proxy set socks5 <host> <port> - 设置 SOCKS5 代理"
             echo "  proxy set all <host> <port>     - 设置所有代理"
+            echo "  proxy api ...               - 管理 API 中转 URL 和 API Key profiles"
             echo "  proxy status                - 查看当前代理状态"
             echo "  proxy update                - 更新到最新版本"
             echo ""

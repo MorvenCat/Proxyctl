@@ -127,7 +127,22 @@ else
     echo -e "${YELLOW}⚠ 状态文件不存在: $HOME/.proxy_state${NC}"
 fi
 
-# 5. 删除备份文件（如果有）
+# 5. 删除 API profiles 配置与状态（如果有）
+if [ -f "$HOME/.proxy_api_state" ]; then
+    rm -f "$HOME/.proxy_api_state"
+    echo -e "${GREEN}✓ 已删除 $HOME/.proxy_api_state${NC}"
+else
+    echo -e "${YELLOW}⚠ API 状态文件不存在: $HOME/.proxy_api_state${NC}"
+fi
+
+if [ -d "$HOME/.proxy_api.d" ]; then
+    rm -rf "$HOME/.proxy_api.d"
+    echo -e "${GREEN}✓ 已删除 $HOME/.proxy_api.d${NC}"
+else
+    echo -e "${YELLOW}⚠ API 配置目录不存在: $HOME/.proxy_api.d${NC}"
+fi
+
+# 6. 删除备份文件（如果有）
 backup_count=0
 for backup_file in "$INSTALL_DIR"/proxy.sh.backup.*; do
     if [ -f "$backup_file" ]; then
@@ -139,7 +154,7 @@ if [ $backup_count -gt 0 ]; then
     echo -e "${GREEN}✓ 已删除 $backup_count 个备份文件${NC}"
 fi
 
-# 6. 清除当前 shell 中的环境变量（提示用户）
+# 7. 清除当前 shell 中的环境变量（提示用户）
 echo ""
 echo -e "${GREEN}卸载完成！${NC}"
 echo ""
